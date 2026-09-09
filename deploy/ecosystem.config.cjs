@@ -4,26 +4,44 @@
 // 重启: pm2 restart all
 // 状态: pm2 status
 
+const fs = require('fs')
+const path = require('path')
+const envPath = path.join(__dirname, '..', '.env')
+if (fs.existsSync(envPath)) {
+  const lines = fs.readFileSync(envPath, 'utf8').split('\n')
+  for (const line of lines) {
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/)
+    if (m) {
+      let val = m[2].trim()
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1)
+      }
+      process.env[m[1]] = val
+    }
+  }
+}
+
 module.exports = {
   apps: [
     {
       name: 'bible-api',
       script: 'serverless/hono/index.ts',
-      interpreter: 'node_modules/.bin/tsx',
+      interpreter: '/usr/bin/node',
+      node_args: '--import tsx',
       instances: 1,
       autorestart: true,
       max_memory_restart: '256M',
       env: {
         NODE_ENV: 'production',
         PORT: 8787,
-        WS_ORIGIN: 'https://你的域名'
-        // 其他变量从 .env 读,或在这里直接填
+        WS_ORIGIN: 'https://jhsj5511.top'
       }
     },
     {
       name: 'bible-ws',
       script: 'serverless/ws-server.ts',
-      interpreter: 'node_modules/.bin/tsx',
+      interpreter: '/usr/bin/node',
+      node_args: '--import tsx',
       instances: 1,
       autorestart: true,
       max_memory_restart: '128M',

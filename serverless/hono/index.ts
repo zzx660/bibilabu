@@ -8,7 +8,7 @@ const app = new Hono()
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
+  { auth: { persistSession: false }, realtime: { enabled: false } }
 )
 
 app.use('*', cors({ origin: process.env.WEB_ORIGIN || '*', allowHeaders: ['Content-Type', 'Authorization'] }))
@@ -267,3 +267,26 @@ app.post('/api/account/delete', async (c) => {
 })
 
 export default app
+
+// Node.js 独立服务器启动(Vercel Edge 不需要这段)
+if (process.env.PORT || process.env.NODE_ENV === 'production') {
+  const http = await import('http')
+  const port = Number(process.env.PORT) || 8787
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url || '', `http://${req.headers.host}`)
+    const request = new Request(url, {
+      method: req.method,
+      headers: req.headers as Record<string, string>,
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? req as any : undefined,
+      duplex: 'half'
+    } as RequestInit)
+    const response = await app.fetch(request)
+    res.statusCode = response.status
+    response.headers.forEach((v, k) => res.setHeader(k, v))
+    const body = await response.arrayBuffer()
+    res.end(Buffer.from(body))
+  })
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`API running on http://0.0.0.0:${port}`)
+  })
+}
