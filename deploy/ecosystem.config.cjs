@@ -34,7 +34,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 8787,
-        WS_ORIGIN: 'https://jhsj5511.top'
+        WS_ORIGIN: 'https://jhsj5511.top',
+        SUPABASE_URL: 'https://ejbfxzyjczkdafotfvpb.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqYmZ4enlqY3prZGFmb3RmdnBiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODkzNzM1NCwiZXhwIjoyMTA0NTEzMzU0fQ.UDAZX7UghBH5ofFujKRohQY6AEUUISS2uXE9yMZh2DU',
+        GLM_API_KEY: 'b575f8b408554d4482880d4252bae395.bxdumaDeMelMPT6M'
       }
     },
     {

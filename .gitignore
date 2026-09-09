@@ -11,3 +11,7 @@ dist-ssr
 *.log
 supabase/.branches
 supabase/.temp
+".trae-github" 
+".trae-github.pub" 
+".trae-server" 
+".trae-server.pub" 
