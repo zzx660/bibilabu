@@ -47,6 +47,67 @@ export const api = {
       body: JSON.stringify({ query })
     }),
 
+  // ============ 账号 ============
+  register: (username: string, password: string, invite_code?: string) =>
+    call<any>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, invite_code })
+    }),
+
+  login: (username: string, password: string) =>
+    call<any>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    }),
+
+  me: () =>
+    call<{ profile: any }>('/auth/me', { headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` } }),
+
+  changeInviteCode: (invite_code: string, target_id?: string) =>
+    call<any>('/auth/invite-code', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` },
+      body: JSON.stringify({ invite_code, target_id })
+    }),
+
+  setRole: (target_id: string, role: 'admin' | 'user') =>
+    call<any>('/auth/role', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` },
+      body: JSON.stringify({ target_id, role })
+    }),
+
+  searchUser: (q: string) =>
+    call<{ items: any[] }>(`/auth/search?q=${encodeURIComponent(q)}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` }
+    }),
+
+  // ============ 好友 ============
+  listFriends: () =>
+    call<{ friends: any[]; requests: any[] }>('/friends', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` }
+    }),
+
+  requestFriend: (friend_code: string) =>
+    call<any>('/friends/request', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` },
+      body: JSON.stringify({ friend_code })
+    }),
+
+  acceptFriend: (from_id: string) =>
+    call<any>('/friends/accept', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` },
+      body: JSON.stringify({ from_id })
+    }),
+
+  removeFriend: (id: string) =>
+    call<any>(`/friends/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${localStorage.getItem('sb_token') || ''}` }
+    }),
+
   deleteAccount: (token: string) =>
     call<{ ok: boolean }>('/account/delete', {
       method: 'POST',
