@@ -8,7 +8,7 @@ const app = new Hono()
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false }, realtime: false }
+  { auth: { persistSession: false } }
 )
 
 app.use('*', cors({ origin: process.env.WEB_ORIGIN || '*', allowHeaders: ['Content-Type', 'Authorization'] }))

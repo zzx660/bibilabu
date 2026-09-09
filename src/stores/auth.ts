@@ -33,10 +33,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function loadProfile() {
-    const { data } = await api.me()
-    if (data?.profile) {
-      profile.value = data.profile
-      return data.profile as Profile
+    const res = await api.me()
+    if (res?.profile) {
+      profile.value = res.profile
+      return res.profile as Profile
     }
     return null
   }
