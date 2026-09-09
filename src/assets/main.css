@@ -1,0 +1,57 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --bg: #faf8f3;
+  --ink: #1a1a17;
+  --muted: #6b6657;
+  --line: #e8e2d3;
+  --grape: #4338ca;
+  --scroll: #b89b5e;
+  --paper: #ffffff;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  font-family: 'Noto Serif SC', Georgia, serif;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.verse-card {
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 16px;
+}
+
+.verse-num {
+  color: var(--scroll);
+  font-size: 12px;
+  margin-right: 6px;
+  font-weight: 600;
+}
+
+.muted { color: var(--muted); }
+.center { text-align: center; }
+.row { display: flex; }
+
+.page {
+  padding-bottom: 60px; /* tabbar */
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.pinch {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 4px;
+}
+
+a { color: var(--grape); text-decoration: none; }
+
+input, textarea, button { font-family: inherit; }

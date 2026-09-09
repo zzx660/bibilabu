@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vue",
+  "rewrites": [
+    { "source": "/((?!api).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/[[...route]].ts": {
+      "memory": 128,
+      "maxDuration": 30
+    }
+  }
+}
