@@ -1,11 +1,10 @@
-import { ref, nextTick } from 'vue';
-import { Field, Button, Tag, showToast } from 'vant';
+import { ref, onMounted, nextTick } from 'vue';
+import { Field, Button, Tag, showToast, showConfirmDialog, NavBar } from 'vant';
 import { api } from '@/api/hono';
 import { useBibleStore } from '@/stores/bible';
+const WELCOME = { role: 'ai', text: '愿主赐福给你。我是智能问答助手,会先从知识库(注释书、人物字典)检索相关内容,再结合经文回答。可问经文含义、人物事迹、生活指引等。' };
 const input = ref('');
-const msgs = ref([
-    { role: 'ai', text: '愿主赐福给你。我是智能问答助手,会先从知识库(注释书、人物字典)检索相关内容,再结合经文回答。可问经文含义、人物事迹、生活指引等。' }
-]);
+const msgs = ref([WELCOME]);
 const busy = ref(false);
 const list = ref();
 const store = useBibleStore();
@@ -14,6 +13,32 @@ const currentVerse = () => {
         return '';
     return `${store.activeBook} ${store.activeChapterNum}:1`;
 };
+onMounted(async () => {
+    try {
+        const { items } = await api.aiHistory();
+        if (items.length) {
+            const historyMsgs = [];
+            for (const h of items) {
+                historyMsgs.push({ role: 'user', text: h.question });
+                historyMsgs.push({ role: 'ai', text: h.answer });
+            }
+            msgs.value = [WELCOME, ...historyMsgs];
+            await scroll();
+        }
+    }
+    catch { }
+});
+async function clearHistory() {
+    try {
+        await showConfirmDialog({ title: '清空对话', message: '确认清空所有AI对话记录?' });
+    }
+    catch {
+        return;
+    }
+    await api.clearAiHistory();
+    msgs.value = [WELCOME];
+    showToast('已清空');
+}
 async function send() {
     const q = input.value.trim();
     if (!q || busy.value)
@@ -94,6 +119,26 @@ let __VLS_directives;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "page chat-page" },
 });
+const __VLS_0 = {}.NavBar;
+/** @type {[typeof __VLS_components.NavBar, ]} */ ;
+// @ts-ignore
+const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+    ...{ 'onClickRight': {} },
+    title: "智能问答",
+    rightText: "清空",
+}));
+const __VLS_2 = __VLS_1({
+    ...{ 'onClickRight': {} },
+    title: "智能问答",
+    rightText: "清空",
+}, ...__VLS_functionalComponentArgsRest(__VLS_1));
+let __VLS_4;
+let __VLS_5;
+let __VLS_6;
+const __VLS_7 = {
+    onClickRight: (__VLS_ctx.clearHistory)
+};
+var __VLS_3;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ref: "list",
     ...{ class: "msgs" },
@@ -118,42 +163,42 @@ for (const [m, i] of __VLS_getVForSourceType((__VLS_ctx.msgs))) {
             ...{ class: "refs" },
         });
         for (const [v] of __VLS_getVForSourceType((m.refs.verses))) {
-            const __VLS_0 = {}.Tag;
+            const __VLS_8 = {}.Tag;
             /** @type {[typeof __VLS_components.Tag, typeof __VLS_components.Tag, ]} */ ;
             // @ts-ignore
-            const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+            const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
                 key: (v),
                 plain: true,
                 size: "medium",
             }));
-            const __VLS_2 = __VLS_1({
+            const __VLS_10 = __VLS_9({
                 key: (v),
                 plain: true,
                 size: "medium",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-            __VLS_3.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+            __VLS_11.slots.default;
             (v);
-            var __VLS_3;
+            var __VLS_11;
         }
         for (const [p] of __VLS_getVForSourceType((m.refs.persons))) {
-            const __VLS_4 = {}.Tag;
+            const __VLS_12 = {}.Tag;
             /** @type {[typeof __VLS_components.Tag, typeof __VLS_components.Tag, ]} */ ;
             // @ts-ignore
-            const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
+            const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
                 key: (p),
                 type: "primary",
                 plain: true,
                 size: "medium",
             }));
-            const __VLS_6 = __VLS_5({
+            const __VLS_14 = __VLS_13({
                 key: (p),
                 type: "primary",
                 plain: true,
                 size: "medium",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_5));
-            __VLS_7.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+            __VLS_15.slots.default;
             (p);
-            var __VLS_7;
+            var __VLS_15;
         }
     }
     if (m.chunks && m.chunks.length) {
@@ -168,20 +213,20 @@ for (const [m, i] of __VLS_getVForSourceType((__VLS_ctx.msgs))) {
                 key: (j),
                 ...{ class: "chunk" },
             });
-            const __VLS_8 = {}.Tag;
+            const __VLS_16 = {}.Tag;
             /** @type {[typeof __VLS_components.Tag, typeof __VLS_components.Tag, ]} */ ;
             // @ts-ignore
-            const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
                 plain: true,
                 size: "medium",
             }));
-            const __VLS_10 = __VLS_9({
+            const __VLS_18 = __VLS_17({
                 plain: true,
                 size: "medium",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-            __VLS_11.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+            __VLS_19.slots.default;
             (__VLS_ctx.sourceLabel[c.source] || c.source);
-            var __VLS_11;
+            var __VLS_19;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "chunk-title" },
             });
@@ -201,100 +246,100 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
     ...{ class: "suggestions" },
 });
 for (const [s] of __VLS_getVForSourceType((__VLS_ctx.suggestions))) {
-    const __VLS_12 = {}.Tag;
+    const __VLS_20 = {}.Tag;
     /** @type {[typeof __VLS_components.Tag, typeof __VLS_components.Tag, ]} */ ;
-    // @ts-ignore
-    const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
-        ...{ 'onClick': {} },
-        key: (s),
-        plain: true,
-    }));
-    const __VLS_14 = __VLS_13({
-        ...{ 'onClick': {} },
-        key: (s),
-        plain: true,
-    }, ...__VLS_functionalComponentArgsRest(__VLS_13));
-    let __VLS_16;
-    let __VLS_17;
-    let __VLS_18;
-    const __VLS_19 = {
-        onClick: (...[$event]) => {
-            __VLS_ctx.pick(s);
-        }
-    };
-    __VLS_15.slots.default;
-    (s);
-    var __VLS_15;
-}
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "input-bar" },
-});
-if (__VLS_ctx.store.currentChapter.length) {
-    const __VLS_20 = {}.Button;
-    /** @type {[typeof __VLS_components.Button, typeof __VLS_components.Button, ]} */ ;
     // @ts-ignore
     const __VLS_21 = __VLS_asFunctionalComponent(__VLS_20, new __VLS_20({
         ...{ 'onClick': {} },
+        key: (s),
         plain: true,
-        size: "small",
     }));
     const __VLS_22 = __VLS_21({
         ...{ 'onClick': {} },
+        key: (s),
         plain: true,
-        size: "small",
     }, ...__VLS_functionalComponentArgsRest(__VLS_21));
     let __VLS_24;
     let __VLS_25;
     let __VLS_26;
     const __VLS_27 = {
-        onClick: (__VLS_ctx.explainCurrent)
+        onClick: (...[$event]) => {
+            __VLS_ctx.pick(s);
+        }
     };
     __VLS_23.slots.default;
+    (s);
     var __VLS_23;
 }
-const __VLS_28 = {}.Field;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "input-bar" },
+});
+if (__VLS_ctx.store.currentChapter.length) {
+    const __VLS_28 = {}.Button;
+    /** @type {[typeof __VLS_components.Button, typeof __VLS_components.Button, ]} */ ;
+    // @ts-ignore
+    const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
+        ...{ 'onClick': {} },
+        plain: true,
+        size: "small",
+    }));
+    const __VLS_30 = __VLS_29({
+        ...{ 'onClick': {} },
+        plain: true,
+        size: "small",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+    let __VLS_32;
+    let __VLS_33;
+    let __VLS_34;
+    const __VLS_35 = {
+        onClick: (__VLS_ctx.explainCurrent)
+    };
+    __VLS_31.slots.default;
+    var __VLS_31;
+}
+const __VLS_36 = {}.Field;
 /** @type {[typeof __VLS_components.Field, ]} */ ;
 // @ts-ignore
-const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
-    ...{ 'onKeyup': {} },
-    modelValue: (__VLS_ctx.input),
-    placeholder: "提问…",
-}));
-const __VLS_30 = __VLS_29({
-    ...{ 'onKeyup': {} },
-    modelValue: (__VLS_ctx.input),
-    placeholder: "提问…",
-}, ...__VLS_functionalComponentArgsRest(__VLS_29));
-let __VLS_32;
-let __VLS_33;
-let __VLS_34;
-const __VLS_35 = {
-    onKeyup: (__VLS_ctx.send)
-};
-var __VLS_31;
-const __VLS_36 = {}.Button;
-/** @type {[typeof __VLS_components.Button, typeof __VLS_components.Button, ]} */ ;
-// @ts-ignore
 const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
-    ...{ 'onClick': {} },
-    type: "primary",
-    size: "small",
-    loading: (__VLS_ctx.busy),
+    ...{ 'onKeyup': {} },
+    modelValue: (__VLS_ctx.input),
+    placeholder: "提问…",
 }));
 const __VLS_38 = __VLS_37({
-    ...{ 'onClick': {} },
-    type: "primary",
-    size: "small",
-    loading: (__VLS_ctx.busy),
+    ...{ 'onKeyup': {} },
+    modelValue: (__VLS_ctx.input),
+    placeholder: "提问…",
 }, ...__VLS_functionalComponentArgsRest(__VLS_37));
 let __VLS_40;
 let __VLS_41;
 let __VLS_42;
 const __VLS_43 = {
+    onKeyup: (__VLS_ctx.send)
+};
+var __VLS_39;
+const __VLS_44 = {}.Button;
+/** @type {[typeof __VLS_components.Button, typeof __VLS_components.Button, ]} */ ;
+// @ts-ignore
+const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
+    ...{ 'onClick': {} },
+    type: "primary",
+    size: "small",
+    loading: (__VLS_ctx.busy),
+}));
+const __VLS_46 = __VLS_45({
+    ...{ 'onClick': {} },
+    type: "primary",
+    size: "small",
+    loading: (__VLS_ctx.busy),
+}, ...__VLS_functionalComponentArgsRest(__VLS_45));
+let __VLS_48;
+let __VLS_49;
+let __VLS_50;
+const __VLS_51 = {
     onClick: (__VLS_ctx.send)
 };
-__VLS_39.slots.default;
-var __VLS_39;
+__VLS_47.slots.default;
+var __VLS_47;
 /** @type {__VLS_StyleScopedClasses['page']} */ ;
 /** @type {__VLS_StyleScopedClasses['chat-page']} */ ;
 /** @type {__VLS_StyleScopedClasses['msgs']} */ ;
@@ -319,11 +364,13 @@ const __VLS_self = (await import('vue')).defineComponent({
             Field: Field,
             Button: Button,
             Tag: Tag,
+            NavBar: NavBar,
             input: input,
             msgs: msgs,
             busy: busy,
             list: list,
             store: store,
+            clearHistory: clearHistory,
             send: send,
             explainCurrent: explainCurrent,
             sourceLabel: sourceLabel,

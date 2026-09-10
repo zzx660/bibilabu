@@ -13,6 +13,11 @@ export type Profile = {
   display_name: string | null
   avatar_url: string | null
   created_at: string
+  nickname?: string | null
+  title?: string | null
+  avatar_color?: string | null
+  last_book?: string | null
+  last_chapter?: number | null
 }
 
 export const useAuthStore = defineStore('auth', () => {

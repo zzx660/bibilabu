@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { Field, Button, Tag, showToast } from 'vant'
+import { ref, onMounted, nextTick } from 'vue'
+import { Field, Button, Tag, showToast, showConfirmDialog, NavBar } from 'vant'
 import { api } from '@/api/hono'
 import { useBibleStore } from '@/stores/bible'
 
 type Chunk = { title: string; source: string; snippet: string }
 type Msg = { role: 'user' | 'ai'; text: string; refs?: { verses: string[]; persons: string[] }; chunks?: Chunk[]; fallback?: boolean }
 
+const WELCOME: Msg = { role: 'ai', text: '愿主赐福给你。我是智能问答助手,会先从知识库(注释书、人物字典)检索相关内容,再结合经文回答。可问经文含义、人物事迹、生活指引等。' }
+
 const input = ref('')
-const msgs = ref<Msg[]>([
-  { role: 'ai', text: '愿主赐福给你。我是智能问答助手,会先从知识库(注释书、人物字典)检索相关内容,再结合经文回答。可问经文含义、人物事迹、生活指引等。' }
-])
+const msgs = ref<Msg[]>([WELCOME])
 const busy = ref(false)
 const list = ref<HTMLElement>()
 
@@ -18,6 +18,30 @@ const store = useBibleStore()
 const currentVerse = () => {
   if (!store.currentChapter.length) return ''
   return `${store.activeBook} ${store.activeChapterNum}:1`
+}
+
+onMounted(async () => {
+  try {
+    const { items } = await api.aiHistory()
+    if (items.length) {
+      const historyMsgs: Msg[] = []
+      for (const h of items) {
+        historyMsgs.push({ role: 'user', text: h.question })
+        historyMsgs.push({ role: 'ai', text: h.answer })
+      }
+      msgs.value = [WELCOME, ...historyMsgs]
+      await scroll()
+    }
+  } catch {}
+})
+
+async function clearHistory() {
+  try {
+    await showConfirmDialog({ title: '清空对话', message: '确认清空所有AI对话记录?' })
+  } catch { return }
+  await api.clearAiHistory()
+  msgs.value = [WELCOME]
+  showToast('已清空')
 }
 
 async function send() {
@@ -86,6 +110,7 @@ function pick(s: string) {
 
 <template>
   <div class="page chat-page">
+    <NavBar title="智能问答" right-text="清空" @click-right="clearHistory" />
     <div ref="list" class="msgs">
       <div v-for="(m, i) in msgs" :key="i" :class="['msg', m.role]">
         <div class="bubble">{{ m.text }}</div>
