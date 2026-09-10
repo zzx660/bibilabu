@@ -16,33 +16,37 @@ app.use('*', cors({ origin: process.env.WEB_ORIGIN || '*', allowHeaders: ['Conte
 // 健康检查
 app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }))
 
-// 圣经搜索
+// 圣经搜索(分页 + 多关键词 AND + total)
 app.get('/api/bible/search', async (c) => {
   const q = c.req.query('q')?.trim()
-  if (!q) return c.json({ items: [], total: 0 })
-  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 200)
+  if (!q) return c.json({ items: [], total: 0, page: 1, total_pages: 0 })
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
+  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100)
+  const offset = (page - 1) * limit
 
-  // 精确短语 + 模糊 兜底
-  const phrase = q.replace(/\s+/g, ' ')
-  const { data: exact } = await supabase
+  // 多关键词:空格分隔 → AND 匹配
+  const keywords = q.split(/\s+/).filter(Boolean)
+  const andConditions = keywords.map((k) => `text_zh.ilike.%${k}%`)
+  const andFilter = andConditions.join(',')
+
+  // 总数
+  const { count } = await supabase
+    .from('bible_verses')
+    .select('id', { count: 'exact', head: true })
+    .or(andFilter)
+
+  const total = count || 0
+  const total_pages = Math.ceil(total / limit)
+
+  // 分页数据
+  const { data } = await supabase
     .from('bible_verses')
     .select('id,book_code,book_name_zh,chapter,verse,text_zh')
-    .ilike('text_zh', `%${phrase}%`)
-    .limit(limit)
+    .or(andFilter)
+    .order('id', { ascending: true })
+    .range(offset, offset + limit - 1)
 
-  let items = exact || []
-  if (items.length < limit) {
-    const have = new Set(items.map((v: any) => v.id))
-    const { data: fuzzy } = await supabase
-      .from('bible_verses')
-      .select('id,book_code,book_name_zh,chapter,verse,text_zh')
-      .textSearch('search_text', phrase, { type: 'websearch' })
-      .limit(limit - items.length)
-    for (const v of fuzzy || []) {
-      if (!have.has((v as any).id)) items.push(v)
-    }
-  }
-  return c.json({ items, total: items.length })
+  return c.json({ items: data || [], total, page, total_pages })
 })
 
 // 按书卷+章读经
@@ -70,13 +74,27 @@ app.get('/api/bible/books', async (c) => {
   return c.json({ books: data })
 })
 
-// 人物搜索
+// 人物搜索(分页)
 app.get('/api/persons', async (c) => {
   const q = c.req.query('q')?.trim()
-  let query = supabase.from('persons').select('id,name_zh,name_en,alt_names,summary,verse_refs')
-  if (q) query = query.or(`name_zh.ilike.%${q}%,name_en.ilike.%${q}%`)
-  const { data } = await query.limit(30)
-  return c.json({ items: data })
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
+  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100)
+  const offset = (page - 1) * limit
+
+  const filter = q ? `name_zh.ilike.%${q}%,name_en.ilike.%${q}%,alt_names.cs.{${q}}` : null
+
+  const { count } = await supabase
+    .from('persons').select('id', { count: 'exact', head: true })
+    .or(filter || 'id.not.is.null')
+
+  let query = supabase
+    .from('persons')
+    .select('id,name_zh,name_en,alt_names,summary,verse_refs')
+  if (filter) query = query.or(filter)
+  const { data } = await query.range(offset, offset + limit - 1)
+
+  const total = count || 0
+  return c.json({ items: data || [], total, page, total_pages: Math.ceil(total / limit) })
 })
 
 app.get('/api/persons/:id', async (c) => {
@@ -149,6 +167,16 @@ app.post('/api/ai/ask', async (c) => {
   parts.push(`用户的问题:${question}`)
 
   const answer = await callGlm(SYS_PROMPT, parts.join('\n\n'))
+
+  // 存历史(若带 token)
+  const user = await getUserFromToken(c).catch(() => null)
+  if (user) {
+    await supabase.from('ai_chat_history').insert([
+      { user_id: user.id, role: 'user', content: question },
+      { user_id: user.id, role: 'assistant', content: answer, refs: { verses: (verses || []).map((v: any) => `${v.book_name_zh} ${v.chapter}:${v.verse}`), persons: (persons || []).map((p: any) => p.name_zh) } }
+    ])
+  }
+
   return c.json({
     answer,
     refs: {
@@ -156,6 +184,26 @@ app.post('/api/ai/ask', async (c) => {
       persons: (persons || []).map((p: any) => p.name_zh)
     }
   })
+})
+
+// AI 对话历史
+app.get('/api/ai/history', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const { data } = await supabase
+    .from('ai_chat_history')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: true })
+  return c.json({ items: data || [] })
+})
+
+// 清空 AI 历史
+app.delete('/api/ai/history', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  await supabase.from('ai_chat_history').delete().eq('user_id', user.id)
+  return c.json({ ok: true })
 })
 
 // 解读单节经文
@@ -413,51 +461,58 @@ app.get('/api/auth/search', async (c) => {
 
 // ============ 好友系统 ============
 
-// 列出好友(accepted 的)
+// 列出好友 + 收到的请求 + 发出的请求
 app.get('/api/friends', async (c) => {
   const user = await getUserFromToken(c)
   if (!user) return c.json({ error: '未登录' }, 401)
 
-  // 双向查:我主动加的,或别人加我的,status=accepted
   const { data } = await supabase
     .from('friends')
-    .select('user_id, friend_id, status, created_at, accepted_at')
+    .select('user_id, friend_id, status, message, remark, created_at, accepted_at')
     .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
 
-  const ids = new Set<string>()
-  const requests: any[] = []
+  const friendIds = new Set<string>()
+  const received: any[] = []
+  const sent: any[] = []
   for (const row of data || []) {
     const otherId = row.user_id === user.id ? row.friend_id : row.user_id
-    if (row.status === 'accepted') ids.add(otherId)
-    else if (row.status === 'pending' && row.friend_id === user.id) {
-      // 别人发来的请求
-      requests.push({ from: row.user_id, created_at: row.created_at })
+    if (row.status === 'accepted') friendIds.add(otherId)
+    else if (row.status === 'pending') {
+      if (row.friend_id === user.id) received.push({ from: row.user_id, message: row.message, created_at: row.created_at })
+      else sent.push({ to: row.friend_id, message: row.message, created_at: row.created_at })
     }
   }
 
   let friends: any[] = []
-  if (ids.size) {
+  if (friendIds.size) {
     const { data: profiles } = await supabase
       .from('profiles')
-      .select('id,username,friend_code,display_name,avatar_url')
-      .in('id', Array.from(ids))
-    friends = profiles || []
-  }
-
-  let reqList: any[] = []
-  if (requests.length) {
-    const fromIds = requests.map((r) => r.from)
-    const { data: reqProfiles } = await supabase
-      .from('profiles')
-      .select('id,username,friend_code,display_name')
-      .in('id', fromIds)
-    reqList = (reqProfiles || []).map((p: any) => {
-      const r = requests.find((x) => x.from === p.id)
-      return { ...p, requested_at: r?.created_at }
+      .select('id,username,friend_code,display_name,avatar_url,title')
+      .in('id', Array.from(friendIds))
+    // 附带 remark
+    friends = (profiles || []).map((p: any) => {
+      const rel = (data || []).find((r) =>
+        (r.user_id === user.id && r.friend_id === p.id) || (r.friend_id === user.id && r.user_id === p.id)
+      )
+      return { ...p, remark: rel?.remark || null }
     })
   }
 
-  return c.json({ friends, requests: reqList })
+  const fillProfiles = async (list: any[], idKey: string) => {
+    if (!list.length) return []
+    const ids = list.map((x) => x[idKey])
+    const { data: ps } = await supabase
+      .from('profiles').select('id,username,friend_code,display_name,avatar_url').in('id', ids)
+    return (ps || []).map((p: any) => {
+      const r = list.find((x) => x[idKey] === p.id)
+      return { ...p, message: r?.message || null, created_at: r?.created_at }
+    })
+  }
+
+  const receivedList = await fillProfiles(received, 'from')
+  const sentList = await fillProfiles(sent, 'to')
+
+  return c.json({ friends, requests: receivedList, sent: sentList })
 })
 
 // 发好友请求
@@ -466,7 +521,8 @@ app.post('/api/friends/request', async (c) => {
   if (!user) return c.json({ error: '未登录' }, 401)
   const body = await c.req.json().catch(() => ({}))
   const friendCode = (body.friend_code || '').toString().trim()
-  if (!friendCode) return c.json({ error: '请输入对方 friend_code' }, 400)
+  const message = (body.message || '').toString().trim().slice(0, 200)
+  if (!friendCode) return c.json({ error: '请输入对方好友码' }, 400)
 
   const { data: target } = await supabase
     .from('profiles').select('id').eq('friend_code', friendCode).maybeSingle()
@@ -492,10 +548,45 @@ app.post('/api/friends/request', async (c) => {
   }
 
   const { error } = await supabase.from('friends').insert({
-    user_id: user.id, friend_id: target.id, status: 'pending'
+    user_id: user.id, friend_id: target.id, status: 'pending', message
   })
   if (error) return c.json({ error: error.message }, 500)
   return c.json({ ok: true })
+})
+
+// 改好友备注
+app.put('/api/friends/:id/remark', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const friendId = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const remark = (body.remark || '').toString().slice(0, 50)
+
+  const { error } = await supabase.from('friends')
+    .update({ remark })
+    .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ ok: true })
+})
+
+// 查看好友详细信息
+app.get('/api/friends/:id/profile', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const friendId = c.req.param('id')
+
+  // 必须是好友才能看
+  const { data: rel } = await supabase.from('friends')
+    .select('remark,status')
+    .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+    .maybeSingle()
+  if (!rel || rel.status !== 'accepted') return c.json({ error: '不是好友' }, 403)
+
+  const { data: profile } = await supabase.from('profiles')
+    .select('id,username,friend_code,display_name,avatar_url,title,bio,created_at')
+    .eq('id', friendId).maybeSingle()
+  if (!profile) return c.json({ error: '用户不存在' }, 404)
+  return c.json({ profile: { ...profile, remark: rel.remark } })
 })
 
 // 接受好友请求
@@ -528,6 +619,301 @@ app.delete('/api/friends/:id', async (c) => {
     .delete()
     .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
   if (error) return c.json({ error: error.message }, 500)
+  return c.json({ ok: true })
+})
+
+// ============ 书签 ============
+app.get('/api/bookmarks', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const { data } = await supabase
+    .from('bookmarks').select('*').eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+  return c.json({ items: data || [] })
+})
+
+app.post('/api/bookmarks', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const { book_code, book_name_zh, chapter, verse_start, verse_end, note, color } = body
+  if (!book_code || !chapter || !verse_start) return c.json({ error: '参数不全' }, 400)
+  const { data, error } = await supabase.from('bookmarks').insert({
+    user_id: user.id, book_code, book_name_zh: book_name_zh || '',
+    chapter, verse_start, verse_end: verse_end || 0,
+    note: note || '', color: color || '#b89b5e'
+  }).select().maybeSingle()
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ bookmark: data })
+})
+
+app.put('/api/bookmarks/:id', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const { data, error } = await supabase.from('bookmarks')
+    .update({ note: body.note, color: body.color })
+    .eq('id', id).eq('user_id', user.id).select().maybeSingle()
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ bookmark: data })
+})
+
+app.delete('/api/bookmarks/:id', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  await supabase.from('bookmarks').delete().eq('id', c.req.param('id')).eq('user_id', user.id)
+  return c.json({ ok: true })
+})
+
+// ============ 代祷 ============
+app.post('/api/prayers', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const name = (body.name || '').toString().trim()
+  const content = (body.content || '').toString().trim()
+  const visibility = body.visibility || 'friends'
+  if (!name || !content) return c.json({ error: '姓名和代祷需求必填' }, 400)
+  const { data, error } = await supabase.from('prayers')
+    .insert({ user_id: user.id, name, content, visibility }).select().maybeSingle()
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ prayer: data })
+})
+
+app.get('/api/prayers/mine', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const { data } = await supabase.from('prayers')
+    .select('*').eq('user_id', user.id).order('created_at', { ascending: false })
+  return c.json({ items: data || [] })
+})
+
+// 好友 + 同群成员可见的代祷
+app.get('/api/prayers/friends', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+
+  // 我的好友 ID
+  const { data: friendRows } = await supabase.from('friends')
+    .select('user_id,friend_id').eq('status', 'accepted')
+    .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
+  const friendIds = new Set<string>()
+  for (const r of friendRows || []) {
+    friendIds.add(r.user_id === user.id ? r.friend_id : r.user_id)
+  }
+
+  // 我所在的群 → 群成员 ID
+  const { data: myRooms } = await supabase.from('chat_room_members')
+    .select('room_id').eq('user_id', user.id)
+  const groupMemberIds = new Set<string>()
+  if (myRooms && myRooms.length) {
+    const roomIds = myRooms.map((r) => r.room_id)
+    const { data: members } = await supabase.from('chat_room_members')
+      .select('user_id').in('room_id', roomIds)
+    for (const m of members || []) groupMemberIds.add(m.user_id)
+  }
+
+  const visibleUserIds = Array.from(new Set([...friendIds, ...groupMemberIds, user.id]))
+  if (!visibleUserIds.length) return c.json({ items: [] })
+
+  const { data } = await supabase.from('prayers')
+    .select('*').in('user_id', visibleUserIds)
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  // 附带打卡数
+  const ids = (data || []).map((p: any) => p.id)
+  let checkinMap: Record<number, number> = {}
+  let myCheckins = new Set<number>()
+  if (ids.length) {
+    const { data: cis } = await supabase.from('prayer_checkins')
+      .select('prayer_id,user_id').in('prayer_id', ids)
+    for (const ci of cis || []) {
+      checkinMap[ci.prayer_id] = (checkinMap[ci.prayer_id] || 0) + 1
+      if (ci.user_id === user.id) myCheckins.add(ci.prayer_id)
+    }
+  }
+
+  const items = (data || []).map((p: any) => ({
+    ...p, checkin_count: checkinMap[p.id] || 0, checked: myCheckins.has(p.id)
+  }))
+  return c.json({ items })
+})
+
+app.delete('/api/prayers/:id', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const { error } = await supabase.from('prayers')
+    .delete().eq('id', c.req.param('id')).eq('user_id', user.id)
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ ok: true })
+})
+
+app.post('/api/prayers/:id/checkin', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const prayerId = c.req.param('id')
+  // upsert
+  const { error } = await supabase.from('prayer_checkins')
+    .insert({ prayer_id: prayerId, user_id: user.id })
+  if (error) {
+    if (error.code === '23505') return c.json({ ok: true, already: true })
+    return c.json({ error: error.message }, 500)
+  }
+  return c.json({ ok: true })
+})
+
+// ============ 群组 ============
+// 建群
+app.post('/api/groups', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const title = (body.title || '').toString().trim() || '新群聊'
+  const memberIds: string[] = Array.isArray(body.member_ids) ? body.member_ids : []
+
+  const { data: room, error: rErr } = await supabase.from('chat_rooms')
+    .insert({ type: 'group', title, created_by: user.id, owner_id: user.id }).select().maybeSingle()
+  if (rErr) return c.json({ error: rErr.message }, 500)
+
+  // 群主 + 成员
+  const members = [{ room_id: room.id, user_id: user.id, role: 'owner' },
+    ...memberIds.filter((id) => id !== user.id).map((id) => ({ room_id: room.id, user_id: id, role: 'member' }))]
+  await supabase.from('chat_room_members').insert(members)
+  return c.json({ group: room })
+})
+
+// 改群资料
+app.put('/api/groups/:id', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const gid = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  // 权限:owner 或 admin
+  const { data: role } = await supabase.from('chat_room_members')
+    .select('role').eq('room_id', gid).eq('user_id', user.id).maybeSingle()
+  if (!role || !['owner', 'admin'].includes(role.role)) return c.json({ error: '无权限' }, 403)
+
+  const update: any = {}
+  if (body.title !== undefined) update.title = body.title
+  if (body.avatar_url !== undefined) update.avatar_url = body.avatar_url
+  const { data, error } = await supabase.from('chat_rooms')
+    .update(update).eq('id', gid).select().maybeSingle()
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ group: data })
+})
+
+// 改公告
+app.put('/api/groups/:id/announcement', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const gid = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const { data: role } = await supabase.from('chat_room_members')
+    .select('role').eq('room_id', gid).eq('user_id', user.id).maybeSingle()
+  if (!role || !['owner', 'admin'].includes(role.role)) return c.json({ error: '无权限' }, 403)
+  const { data, error } = await supabase.from('chat_rooms')
+    .update({ announcement: body.announcement || '' }).eq('id', gid).select().maybeSingle()
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ group: data })
+})
+
+// 设/取消管理员(仅 owner)
+app.put('/api/groups/:id/role', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const gid = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const { data: room } = await supabase.from('chat_rooms')
+    .select('owner_id').eq('id', gid).maybeSingle()
+  if (!room || room.owner_id !== user.id) return c.json({ error: '仅群主可操作' }, 403)
+
+  const { error } = await supabase.from('chat_room_members')
+    .update({ role: body.role }).eq('room_id', gid).eq('user_id', body.user_id)
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ ok: true })
+})
+
+// 拉人入群(owner/admin)
+app.post('/api/groups/:id/invite', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const gid = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const { data: role } = await supabase.from('chat_room_members')
+    .select('role').eq('room_id', gid).eq('user_id', user.id).maybeSingle()
+  if (!role || !['owner', 'admin'].includes(role.role)) return c.json({ error: '无权限' }, 403)
+
+  const memberIds: string[] = Array.isArray(body.member_ids) ? body.member_ids : []
+  const rows = memberIds.map((id) => ({ room_id: gid, user_id: id, role: 'member' }))
+  const { error } = await supabase.from('chat_room_members').insert(rows)
+  if (error && error.code !== '23505') return c.json({ error: error.message }, 500)
+  return c.json({ ok: true })
+})
+
+// 踢人(owner/admin)
+app.delete('/api/groups/:id/members/:uid', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const gid = c.req.param('id')
+  const { data: role } = await supabase.from('chat_room_members')
+    .select('role').eq('room_id', gid).eq('user_id', user.id).maybeSingle()
+  if (!role || !['owner', 'admin'].includes(role.role)) return c.json({ error: '无权限' }, 403)
+  await supabase.from('chat_room_members').delete().eq('room_id', gid).eq('user_id', c.req.param('uid'))
+  return c.json({ ok: true })
+})
+
+// 群成员列表
+app.get('/api/groups/:id/members', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const gid = c.req.param('id')
+  // 必须在群里
+  const { data: me } = await supabase.from('chat_room_members')
+    .select('room_id').eq('room_id', gid).eq('user_id', user.id).maybeSingle()
+  if (!me) return c.json({ error: '不在群内' }, 403)
+
+  const { data } = await supabase.from('chat_room_members')
+    .select('user_id,role,joined_at, profiles(id,username,display_name,avatar_url,title)')
+    .eq('room_id', gid)
+  const { data: room } = await supabase.from('chat_rooms')
+    .select('id,title,announcement,avatar_url,owner_id').eq('id', gid).maybeSingle()
+  return c.json({ members: data || [], group: room })
+})
+
+// 退群
+app.delete('/api/groups/:id/leave', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const gid = c.req.param('id')
+  await supabase.from('chat_room_members').delete().eq('room_id', gid).eq('user_id', user.id)
+  return c.json({ ok: true })
+})
+
+// ============ 个人资料 ============
+app.put('/api/me/profile', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const update: any = {}
+  for (const k of ['display_name', 'avatar_url', 'title', 'bio', 'show_en']) {
+    if (body[k] !== undefined) update[k] = body[k]
+  }
+  const { data, error } = await supabase.from('profiles')
+    .update(update).eq('id', user.id).select('id,username,email,friend_code,invite_code,role,display_name,avatar_url,title,bio,show_en,last_book,last_chapter,created_at').maybeSingle()
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ profile: data })
+})
+
+// 更新读经位置
+app.put('/api/me/reading', async (c) => {
+  const user = await getUserFromToken(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const { book, chapter } = body
+  if (!book || !chapter) return c.json({ error: '参数不全' }, 400)
+  await supabase.from('profiles').update({ last_book: book, last_chapter: chapter }).eq('id', user.id)
   return c.json({ ok: true })
 })
 
