@@ -1,75 +1,103 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Search as VSearch, Cell, Tabs, Tab } from 'vant'
 import { useRouter } from 'vue-router'
+import { NavBar, Search as VanSearch, Pagination } from 'vant'
 import { api } from '@/api/hono'
 
-const tab = ref<'verse' | 'person'>('verse')
-const keyword = ref('')
-const results = ref<any[]>([])
-const searching = ref(false)
 const router = useRouter()
+const tab = ref<'verse' | 'person'>('verse')
+const kw = ref('')
+const verses = ref<any[]>([])
+const persons = ref<any[]>([])
+const page = ref(1)
+const total = ref(0)
+const pageSize = 20
+const loading = ref(false)
 
-async function doSearch() {
-  const q = keyword.value.trim()
+async function search(p = 1) {
+  const q = kw.value.trim()
   if (!q) return
-  searching.value = true
+  page.value = p
+  loading.value = true
   try {
     if (tab.value === 'verse') {
-      const { items } = await api.searchVerses(q)
-      results.value = items
+      const { items, total: t } = await api.searchVerses(q, p, pageSize)
+      verses.value = items
+      total.value = t
     } else {
-      const { items } = await api.searchPersons(q)
-      results.value = items
+      const { items, total: t } = await api.searchPersons(q, p, pageSize)
+      persons.value = items
+      total.value = t
     }
   } finally {
-    searching.value = false
+    loading.value = false
   }
 }
 
-function openVerse(v: any) {
+function highlight(text: string) {
+  const parts = kw.value.trim().split(/\s+/)
+  if (!parts.length || !text) return text
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(${parts.map(esc).join('|')})`, 'gi')
+  return text.replace(re, '<mark>$1</mark>')
+}
+
+function onSearch() { search(1) }
+
+function gotoVerse(v: any) {
   router.push(`/read/${v.book_code}/${v.chapter}`)
 }
-function openPerson(p: any) {
+
+function gotoPerson(p: any) {
   router.push(`/person/${p.id}`)
 }
 </script>
 
 <template>
-  <div class="page pinch">
-    <Tabs v-model:active="tab" sticky>
-      <Tab title="经文" name="verse" />
-      <Tab title="人物" name="person" />
-    </Tabs>
-    <VSearch v-model="keyword" :placeholder="tab === 'verse' ? '搜索经文关键词' : '搜索人物名'" @search="doSearch" show-action>
-      <template #action><span class="link" @click="doSearch">搜</span></template>
-    </VSearch>
-    <div v-if="searching" class="center muted py-6">查找中…</div>
-    <div v-else-if="results.length" class="hint muted">共 {{ results.length }} 条</div>
-    <template v-if="tab === 'verse'">
-      <Cell
-        v-for="r in results"
-        :key="r.id"
-        :title="r.text_zh"
-        :label="`${r.book_name_zh} ${r.chapter}:${r.verse}`"
-        is-link
-        @click="openVerse(r)"
-      />
-    </template>
-    <template v-else>
-      <Cell
-        v-for="p in results"
-        :key="p.id"
-        :title="p.name_zh"
-        :label="p.summary"
-        is-link
-        @click="openPerson(p)"
-      />
-    </template>
+  <div class="page">
+    <NavBar title="搜索" left-arrow @click-left="router.back()" />
+    <VanSearch v-model="kw" placeholder="输入关键词(多词空格分隔)" @search="onSearch" />
+
+    <div class="tabs">
+      <span :class="{ active: tab === 'verse' }" @click="tab = 'verse'; search(1)">经文</span>
+      <span :class="{ active: tab === 'person' }" @click="tab = 'person'; search(1)">人物</span>
+    </div>
+
+    <div v-if="loading" class="center muted py-10">搜索中…</div>
+
+    <div v-else-if="tab === 'verse'" class="list">
+      <div v-for="v in verses" :key="v.id" class="item" @click="gotoVerse(v)">
+        <div class="ref">{{ v.book_name_zh }} {{ v.chapter }}:{{ v.verse }}</div>
+        <div class="txt" v-html="highlight(v.text_zh)"></div>
+      </div>
+      <div v-if="!verses.length && kw" class="center muted">无结果</div>
+    </div>
+
+    <div v-else class="list">
+      <div v-for="p in persons" :key="p.id" class="item" @click="gotoPerson(p)">
+        <div class="ref">{{ p.name_zh }} <span class="muted">{{ p.name_en }}</span></div>
+        <div class="txt">{{ p.summary?.slice(0, 120) }}</div>
+      </div>
+      <div v-if="!persons.length && kw" class="center muted">无结果</div>
+    </div>
+
+    <Pagination
+      v-if="total > pageSize"
+      v-model="page"
+      :total-items="total"
+      :items-per-page="pageSize"
+      @update:model-value="search"
+    />
   </div>
 </template>
 
 <style scoped>
-.hint { padding: 8px 16px; font-size: 12px; }
-.link { color: var(--grape); }
+.tabs { display: flex; gap: 20px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.tabs span { color: var(--muted); cursor: pointer; font-size: 15px; }
+.tabs span.active { color: var(--grape); font-weight: 600; }
+.list { max-width: 720px; margin: 0 auto; padding: 12px; }
+.item { padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.ref { color: var(--grape); font-weight: 600; margin-bottom: 4px; }
+.txt { font-size: 15px; line-height: 1.6; }
+:deep(mark) { background: #fde68a; color: inherit; padding: 0 2px; border-radius: 2px; }
 </style>

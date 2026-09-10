@@ -1,4 +1,5 @@
 const props = defineProps();
+const emit = defineEmits();
 async function share() {
     const ref = `${props.book || ''}${props.chapter || ''}:${props.verse.verse}`;
     const text = `${ref} ${props.verse.text_zh}`;
@@ -32,7 +33,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 (__VLS_ctx.verse.verse);
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
 (__VLS_ctx.verse.text_zh);
-if (__VLS_ctx.verse.text_en) {
+if (__VLS_ctx.showEn !== false && __VLS_ctx.verse.text_en) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "en muted text-sm mt-1" },
     });
@@ -40,6 +41,12 @@ if (__VLS_ctx.verse.text_en) {
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "actions" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.emit('bookmark');
+        } },
+    ...{ class: "link" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ onClick: (__VLS_ctx.share) },
@@ -54,19 +61,23 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 /** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['actions']} */ ;
 /** @type {__VLS_StyleScopedClasses['link']} */ ;
+/** @type {__VLS_StyleScopedClasses['link']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            emit: emit,
             share: share,
         };
     },
+    __typeEmits: {},
     __typeProps: {},
 });
 export default (await import('vue')).defineComponent({
     setup() {
         return {};
     },
+    __typeEmits: {},
     __typeProps: {},
 });
 ; /* PartiallyEnd: #4569/main.vue */

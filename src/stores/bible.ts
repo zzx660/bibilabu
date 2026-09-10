@@ -27,6 +27,16 @@ export const useBibleStore = defineStore('bible', () => {
   const activeBook = ref('GEN')
   const activeChapterNum = ref(1)
   const loading = ref(false)
+  const showEn = ref(true)
+
+  function setShowEn(v: boolean) {
+    showEn.value = v
+    localStorage.setItem('bible_show_en', v ? '1' : '0')
+  }
+
+  function initShowEn() {
+    showEn.value = localStorage.getItem('bible_show_en') !== '0'
+  }
 
   async function loadBooks() {
     if (books.value.length) return
@@ -41,6 +51,8 @@ export const useBibleStore = defineStore('bible', () => {
     try {
       const { chapter: verses } = await api.readChapter(book, chapter)
       currentChapter.value = verses as Verse[]
+      // 存读经位置(后台静默,失败不影响)
+      api.saveReading(book, chapter).catch(() => {})
     } finally {
       loading.value = false
     }
@@ -66,5 +78,12 @@ export const useBibleStore = defineStore('bible', () => {
     return prev ? [prev.code, prev.chapter_count] : null
   }
 
-  return { books, currentChapter, activeBook, activeChapterNum, loading, loadBooks, loadChapter, nextChapter, prevChapter }
+  function bookName(code: string) {
+    return books.value.find((b) => b.code === code)?.name_zh || code
+  }
+
+  return {
+    books, currentChapter, activeBook, activeChapterNum, loading, showEn,
+    setShowEn, initShowEn, loadBooks, loadChapter, nextChapter, prevChapter, bookName
+  }
 })

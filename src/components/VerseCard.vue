@@ -7,6 +7,11 @@ const props = defineProps<{
   }
   book?: string
   chapter?: number
+  showEn?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'bookmark'): void
 }>()
 
 async function share() {
@@ -30,16 +35,18 @@ async function share() {
       <span class="verse-num">{{ verse.verse }}</span>
       <span>{{ verse.text_zh }}</span>
     </div>
-    <div v-if="verse.text_en" class="en muted text-sm mt-1">{{ verse.text_en }}</div>
+    <div v-if="showEn !== false && verse.text_en" class="en muted text-sm mt-1">{{ verse.text_en }}</div>
     <div class="actions">
+      <span class="link" @click="emit('bookmark')">书签</span>
       <span class="link" @click="share">分享</span>
     </div>
   </div>
 </template>
 
 <style scoped>
+.verse-card { position: relative; }
 .text { line-height: 1.85; font-size: 17px; }
 .en { font-size: 13px; }
-.actions { margin-top: 8px; }
+.actions { margin-top: 8px; display: flex; gap: 16px; }
 .link { color: var(--grape); font-size: 13px; }
 </style>
